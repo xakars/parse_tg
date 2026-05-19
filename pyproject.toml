@@ -1,0 +1,19 @@
+[project]
+name = "parse-tg"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "telethon>=1.43.2",
+]
+[project.optional-dependencies]
+dev = [
+    "editorconfig-checker==3.2.1",
+    "pre-commit>=4.3.0",
+    "ruff==0.11.13",
+]
