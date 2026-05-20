@@ -1,9 +1,12 @@
 import asyncio
 import json
+import os.path
 from typing import Any
+from httpx import Limits
 
 import aiofiles
 
+from clients.async_dpseek_client import AsyncDeepseekClient
 from clients.tg_client import tg_client
 from config import get_settings
 from utils.logger import logger
@@ -31,10 +34,31 @@ async def fetch_vacancies_from_channel(channel: str, limit: int):
     return vacancies
 
 
-async def save_vacancies_to_file(filepath: str, vacancies: dict[str, dict[int, Any]]) -> None:
+async def save_vacancies_to_file(
+        filepath: str,
+        new_vacancies: dict[str, dict[int, Any]],
+) -> None:
+    existing_data: dict[str, dict[str, Any]] = {}
+    if os.path.exists(filepath):
+        try:
+            async with aiofiles.open(filepath, mode="r", encoding="utf-8") as f:
+                content = await f.read()
+                existing_data = json.loads(content)
+        except Exception as e:
+            logger.error("Ошибка при чтении существующего файла %s: %s", filepath, e)
+
+    for channel, posts in new_vacancies.items():
+        if channel not in existing_data:
+            existing_data[channel] = {}
+
+        for post_id, post_content in posts.items():
+            str_post_id = str(post_id)
+            if str_post_id not in existing_data[channel]:
+                existing_data[channel][str_post_id] = post_content
+
     try:
-        async with aiofiles.open(filepath, "w", encoding="utf-8") as f:
-            json_string = json.dumps(vacancies, ensure_ascii=False, indent=4)
+        async with aiofiles.open(filepath, mode="w", encoding="utf-8") as f:
+            json_string = json.dumps(existing_data, ensure_ascii=False, indent=4)
             await f.write(json_string)
         logger.info("Данные успешно сохранены в файл: %s", filepath)
     except Exception as e:
