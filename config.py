@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DeepSeekSettings(BaseModel):
-    API_KEY: SecretStr = Field(description="Your API Key")
+    API_KEY: str | SecretStr = Field(description="Your API Key")
     MAX_CONNECTIONS: PositiveInt = Field(default=5, description="Maximum number of connections")
     TIMEOUT: PositiveInt = Field(default=20, description="Connection timeout")
 

@@ -20,30 +20,20 @@ class AsyncDeepseekClient(httpx.AsyncClient):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(base_url=deepseek_base_url, *args, **kwargs)
+        self.deepseek_model = deepseek_model
         self.deepseek_api_key = deepseek_api_key
         self.deepseek_base_url = deepseek_base_url
-        self.deepseek_model = deepseek_model
 
     @classmethod
-    @asynccontextmanager
-    async def setup(
-            cls,
-            deepseek_api_key: str | SecretStr,
-            deepseek_base_url: str = DEFAULT_API_BASE,
-            deepseek_model: str = DEFAULT_DEEPSEEK_MODEL,
-            *args: Any,
-            **kwargs: Any,
-    ) -> AsyncGenerator[None]:
-        cls._initialized_instance = cls(deepseek_api_key, deepseek_base_url, deepseek_model, *args, **kwargs)
-        async with cls._initialized_instance:
-            yield
+    def initialize(cls, *args: Any, **kwargs: Any) -> 'AsyncDeepseekClient':
+        if cls._initialized_instance is None:
+            cls._initialized_instance = cls(*args, **kwargs)
+        return cls._initialized_instance
+
 
     @classmethod
     def get_initialized_instance(cls) -> 'AsyncDeepseekClient':
-        if client := cls._initialized_instance:
-            return client
-        raise RuntimeError(
-            "AsyncDeepseekClient haven't been initialized yet. "
-            "Did you call setup()?",
-        )
+        if cls._initialized_instance is None:
+            raise ValueError("Клиент еще не был инициализирован! Сначала вызовите AsyncDeepseekClient.initialize(...)")
+        return cls._initialized_instance
