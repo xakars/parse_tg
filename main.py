@@ -2,19 +2,19 @@ import asyncio
 import json
 import os.path
 from typing import Any
-from httpx import Limits
-from langchain_openai import ChatOpenAI
-from langchain_core.output_parsers.openai_tools import PydanticToolsParser
-from langchain_core.messages import HumanMessage
-import pandas as pd
 
 import aiofiles
+import pandas as pd
+from httpx import Limits
+from langchain_core.messages import HumanMessage
+from langchain_core.output_parsers.openai_tools import PydanticToolsParser
+from langchain_openai import ChatOpenAI
 
 from clients.async_dpseek_client import AsyncDeepseekClient
-from schemas.job_schemas import JobVacancy
-from schemas.extract_prompt import prompt_template
 from clients.tg_client import tg_client
 from config import get_settings
+from schemas.extract_prompt import prompt_template
+from schemas.job_schemas import JobVacancy
 from utils.logger import logger
 from utils.vacancy_filter import is_python_vacancy
 
@@ -86,7 +86,7 @@ async def extract_vacancies(filepath: str, excel_filepath: str = "vacancies.xlsx
     for channel, posts in existing_vacancies.items():
         for post_id, post in posts.items():
             messages.append(
-                HumanMessage(content=f"{post["text"]}")
+                HumanMessage(content=f"{post["text"]}"),
             )
 
     llm = ChatOpenAI(
@@ -107,7 +107,7 @@ async def extract_vacancies(filepath: str, excel_filepath: str = "vacancies.xlsx
     results = await chain.abatch(inputs, config={"max_concurrency": 5})
 
     vacancies_list = []
-    #Saving_to_Excel
+    # Saving_to_Excel
     for vacancy in results:
         if not vacancy:
             continue

@@ -8,4 +8,3 @@ class JobVacancy(BaseModel):
     job_responsibilities: str = Field(default=None, description="Кратко что надо делать")
     summary: str = Field(default=None, description="Краткое описание сути вакансии (1-2 предложения)")
     contact: str = Field(default=None, description="Контакт кому и куда писать, если указан")
-    

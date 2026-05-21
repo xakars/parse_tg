@@ -1,5 +1,3 @@
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 import httpx
@@ -30,7 +28,6 @@ class AsyncDeepseekClient(httpx.AsyncClient):
         if cls._initialized_instance is None:
             cls._initialized_instance = cls(*args, **kwargs)
         return cls._initialized_instance
-
 
     @classmethod
     def get_initialized_instance(cls) -> 'AsyncDeepseekClient':
