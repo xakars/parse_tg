@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 import httpx
+from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 DEFAULT_API_BASE = "https://api.deepseek.com"
@@ -34,3 +35,15 @@ class AsyncDeepseekClient(httpx.AsyncClient):
         if cls._initialized_instance is None:
             raise ValueError("Клиент еще не был инициализирован! Сначала вызовите AsyncDeepseekClient.initialize(...)")
         return cls._initialized_instance
+
+    @classmethod
+    def create_langchain_adapter(cls, default_temperature: float = 0.0) -> ChatOpenAI:
+        instance = cls.get_initialized_instance()
+
+        return ChatOpenAI(
+            model=instance.deepseek_model,
+            api_key=instance.deepseek_api_key,
+            base_url=str(instance.base_url),
+            http_async_client=instance,
+            temperature=default_temperature,
+        )

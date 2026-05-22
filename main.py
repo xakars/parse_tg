@@ -8,7 +8,6 @@ from httpx import Limits
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
 
 from clients.async_dpseek_client import AsyncDeepseekClient
 from clients.tg_client import tg_client
@@ -74,7 +73,7 @@ async def save_vacancies_to_file(
         logger.error("Не удалось сохранить файл %s: %s", filepath, e, exc_info=True)
 
 
-async def extract_vacancies_with_llm(json_path: str, excel_path: str):
+async def extract_vacancies_with_llm(json_path: str):
     vacancies = await load_json(json_path)
 
     pending_tasks = []  # Посты которые еще не обрабатывались LLM
@@ -90,14 +89,7 @@ async def extract_vacancies_with_llm(json_path: str, excel_path: str):
         logger.info("Нет новых вакансий для обработки LLM.")
         return
 
-    http_async_client = AsyncDeepseekClient.get_initialized_instance()
-    llm = ChatOpenAI(
-        model=http_async_client.deepseek_model,
-        api_key=http_async_client.deepseek_api_key,
-        base_url=str(http_async_client.base_url),
-        http_async_client=http_async_client,
-        temperature=0,
-    )
+    llm = AsyncDeepseekClient.create_langchain_adapter(default_temperature=0.0)
 
     chain = (
             extract_prompt_template
@@ -153,14 +145,7 @@ async def generate_cover_letter(json_path: str, resume_path: str = "resume.txt")
 
     logger.info(f"Запуск генерации сопроводительных писем для {len(to_process)} вакансий...")
 
-    http_async_client = AsyncDeepseekClient.get_initialized_instance()
-    llm = ChatOpenAI(
-        model=http_async_client.deepseek_model,
-        api_key=http_async_client.deepseek_api_key,
-        base_url=str(http_async_client.base_url),
-        http_async_client=http_async_client,
-        temperature=0,
-    )
+    llm = AsyncDeepseekClient.create_langchain_adapter(default_temperature=0.7)
 
     chain = cover_letter_prompt_template | llm
 
@@ -202,11 +187,13 @@ async def main() -> None:
         for result in results:
             all_vacancies.update(result)
 
-        await save_vacancies_to_file("processed_posts.json", all_vacancies)
+        jons_db = "processed_posts.json"
 
-        await extract_vacancies_with_llm("processed_posts.json", excel_path="parsed_vacancies.xlsx")
+        await save_vacancies_to_file(filepath=jons_db, new_vacancies=all_vacancies)
 
-        await generate_cover_letter("processed_posts.json")
+        await extract_vacancies_with_llm(json_path=jons_db)
+
+        await generate_cover_letter(json_path=jons_db)
 
 
 if __name__ == "__main__":
