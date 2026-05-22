@@ -1,9 +1,10 @@
-import asyncio
 import json
 import os
-import aiofiles
-from utils.logger import logger
 from typing import Any
+
+import aiofiles
+
+from utils.logger import logger
 
 
 async def load_json(filepath: str) -> dict[str, Any]:

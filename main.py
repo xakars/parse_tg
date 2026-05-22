@@ -4,20 +4,20 @@ import os.path
 from typing import Any
 
 import aiofiles
-import pandas as pd
 from httpx import Limits
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 
 from clients.async_dpseek_client import AsyncDeepseekClient
 from clients.tg_client import tg_client
 from config import get_settings
-from schemas.extract_prompt import prompt_template
+from prompt import cover_letter_prompt_template, extract_prompt_template
 from schemas.job_schemas import JobVacancy
+from utils.json_tools import load_json, save_json
 from utils.logger import logger
 from utils.vacancy_filter import is_python_vacancy
-from utils.json_tools import load_json, save_json
 
 settings = get_settings()
 
@@ -33,7 +33,8 @@ async def fetch_vacancies_from_channel(channel: str, limit: int):
                     "text": message.text,
                     "post_date": message.date.isoformat(),
                     "post_link": f"https://t.me/{channel}/{message.id}",
-                    "is_extracted": False
+                    "is_extracted": False,
+                    "is_covered": False,
                 }
 
     except Exception as e:
@@ -73,10 +74,10 @@ async def save_vacancies_to_file(
         logger.error("Не удалось сохранить файл %s: %s", filepath, e, exc_info=True)
 
 
-async def extract_vacancies(json_path: str, excel_path: str):
+async def extract_vacancies_with_llm(json_path: str, excel_path: str):
     vacancies = await load_json(json_path)
 
-    pending_tasks = [] #Посты которые еще не обрабатывались LLM
+    pending_tasks = []  # Посты которые еще не обрабатывались LLM
     task_keys = []
 
     for channel, posts in vacancies.items():
@@ -99,14 +100,14 @@ async def extract_vacancies(json_path: str, excel_path: str):
     )
 
     chain = (
-            prompt_template
+            extract_prompt_template
             | llm.bind_tools(tools=[JobVacancy], tool_choice="JobVacancy")
             | PydanticToolsParser(tools=[JobVacancy])
     )
 
     logger.info(f"Отправка {len(pending_tasks)} постов в DeepSeek...")
     inputs = [{"messages": [msg]} for msg in pending_tasks]
-    results = await chain.abatch(inputs, config={"max_concurrency": 5})
+    results = await chain.abatch(inputs, config=RunnableConfig(max_concurrency=5))
 
     extracted_data = []
     for (channel, post_id), res in zip(task_keys, results):
@@ -118,15 +119,65 @@ async def extract_vacancies(json_path: str, excel_path: str):
 
     await save_json(json_path, vacancies)
 
-    all_results = []
-    for ch in vacancies.values():
-        for p in ch.values():
-            if p.get("is_extracted") and "extracted_info" in p:
-                all_results.append(p["extracted_info"])
 
-    if all_results:
-        pd.DataFrame(all_results).to_excel(excel_path, index=False)
-        logger.info(f"Excel обновлен: {excel_path}")
+async def generate_cover_letter(json_path: str, resume_path: str = "resume.txt"):
+    vacancies = await load_json(json_path)
+    if not os.path.exists(resume_path):
+        logger.error(f"Файл с резюме не найден по пути: {resume_path}")
+        return
+
+    async with aiofiles.open(resume_path, mode="r", encoding="utf-8") as f:
+        resume_content = await f.read()
+
+    to_process = []
+    task_keys = []
+    for channel, posts in vacancies.items():
+        for post_id, post in posts.items():
+            if post.get("is_extracted") and not post.get("is_covered"):
+                vacancy_summary = post.get("extracted_info", {})
+                if vacancy_summary.get("is_python") is False:
+                    logger.info(f"Пропуск вакансии {post_id}: LLM определила её как не-Python.")
+                    vacancies[channel][post_id]["is_covered"] = True
+                    vacancies[channel][post_id]["cover_letter"] = "Пропущено: не относится к Python."
+                    continue
+                user_message_content = (
+                    f"### РЕЗЮМЕ КАНДИДАТА:\n{resume_content}\n\n"
+                    f"### ДАННЫЕ ВАКАНСИИ:\n{vacancy_summary}\n\n"
+                )
+                to_process.append(HumanMessage(content=user_message_content))
+                task_keys.append((channel, post_id))
+
+    if not to_process:
+        logger.info("Нет новых вакансий для добавления Cover letter.")
+        return
+
+    logger.info(f"Запуск генерации сопроводительных писем для {len(to_process)} вакансий...")
+
+    http_async_client = AsyncDeepseekClient.get_initialized_instance()
+    llm = ChatOpenAI(
+        model=http_async_client.deepseek_model,
+        api_key=http_async_client.deepseek_api_key,
+        base_url=str(http_async_client.base_url),
+        http_async_client=http_async_client,
+        temperature=0,
+    )
+
+    chain = cover_letter_prompt_template | llm
+
+    inputs = [{"messages": [msg]} for msg in to_process]
+
+    try:
+        results = await chain.abatch(inputs, config=RunnableConfig(max_concurrency=3))
+
+        for (channel, post_id), response in zip(task_keys, results):
+            vacancies[channel][post_id]["cover_letter"] = response.content.strip()
+            vacancies[channel][post_id]["is_covered"] = True
+        await save_json(json_path, vacancies)
+        logger.info("Все сопроводительные письма успешно добавлены в JSON базу.")
+
+    except Exception as e:
+        logger.error(f"Ошибка при генерации писем через abatch: {e}", exc_info=True)
+
 
 async def main() -> None:
     AsyncDeepseekClient.initialize(
@@ -153,7 +204,9 @@ async def main() -> None:
 
         await save_vacancies_to_file("processed_posts.json", all_vacancies)
 
-        await extract_vacancies("processed_posts.json", excel_path="parsed_vacancies.xlsx")
+        await extract_vacancies_with_llm("processed_posts.json", excel_path="parsed_vacancies.xlsx")
+
+        await generate_cover_letter("processed_posts.json")
 
 
 if __name__ == "__main__":
