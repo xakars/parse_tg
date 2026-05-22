@@ -16,6 +16,7 @@ from prompt import cover_letter_prompt_template, extract_prompt_template
 from schemas.job_schemas import JobVacancy
 from utils.json_tools import load_json, save_json
 from utils.logger import logger
+from utils.save_to import export_to_excel
 from utils.vacancy_filter import is_python_vacancy
 
 settings = get_settings()
@@ -194,6 +195,8 @@ async def main() -> None:
         await extract_vacancies_with_llm(json_path=jons_db)
 
         await generate_cover_letter(json_path=jons_db)
+
+        await export_to_excel(json_path=jons_db, excel_path="parsed_vacancies.xlsx")
 
 
 if __name__ == "__main__":
